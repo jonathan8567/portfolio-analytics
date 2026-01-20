@@ -4,7 +4,9 @@
 
 This engine provides automated PnL tracking, advanced risk attribution (Monte Carlo, Volatility Cones), and professional-grade visualization for multi-asset strategies (Equities, Futures).
 
-![Dashboard Preview](docs/dashboard_preview.png)
+[![Dashboard Preview](docs/dashboard_preview.png)](https://jonathan8567.github.io/portfolio-analytics/)
+
+**[View Live Dashboard](https://jonathan8567.github.io/portfolio-analytics/)**
 
 ## Key Features
 
