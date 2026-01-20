@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Data & Secrets (CRITICAL)
+# data.xlsx  <-- Commented out to allow GitHub Action to read it. 
+# Allow if private repo. Use Google Sheets for better security.
+service_account.json
+*.csv
+
+# Generated Reports
+portfolio_report*.html
+# index.html <-- Commented out to allow GitHub Pages hosting.
+
+# IDE
+.vscode/
+.idea/
+
+# System
+.DS_Store
+Thumbs.db
