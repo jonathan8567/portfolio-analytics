@@ -11,10 +11,6 @@ env/
 service_account.json
 *.csv
 
-# Generated Reports
-portfolio_report*.html
-# index.html <-- Commented out to allow GitHub Pages hosting.
-
 # IDE
 .vscode/
 .idea/

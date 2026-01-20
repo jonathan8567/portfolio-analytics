@@ -6,10 +6,10 @@ echo ===================================================
 echo Portfolio Analytics - Update Workflow
 echo ===================================================
 
-echo Cleaning up old reports...
-if exist "portfolio_report.html" (
-    del "portfolio_report.html"
-    echo Deleted old portfolio_report.html
+echo Cleaning up old reports for clean run...
+if exist "index.html" (
+    del "index.html"
+    echo Deleted old index.html
 )
 
 echo Checking environment...
@@ -28,14 +28,9 @@ if %errorlevel% neq 0 (
     echo Please check the output above.
 ) else (
     echo.
-    echo [SUCCESS] Report generated.
-    
-    REM Find the newest timestamped file
-    for /f "delims=" %%x in ('dir portfolio_report_*.html /b /o-d') do (
-        echo Opening newest report: %%x
-        start %%x
-        goto :done
-    )
+    echo [SUCCESS] Report generated: index.html
+    echo Opening report...
+    start index.html
 )
 
 :done
