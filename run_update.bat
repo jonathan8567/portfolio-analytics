@@ -20,7 +20,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 echo Running Analysis Engine...
-".venv\Scripts\python.exe" main.py
+".venv\Scripts\python.exe" main.py --slippage 5 --commission 10
 
 if %errorlevel% neq 0 (
     echo.
@@ -30,6 +30,7 @@ if %errorlevel% neq 0 (
     echo.
     echo [SUCCESS] Report generated: index.html
     echo Opening report...
+    echo [NOTE] If the report looks old, press CTRL + F5 in the browser to refresh!
     start index.html
 )
 
