@@ -354,7 +354,8 @@ class PortfolioVisualizer:
                 name='Gross Lev',
                 line=dict(color='#8B5CF6', width=2),
                 fill='tozeroy',
-                fillcolor='rgba(139, 92, 246, 0.1)'
+                fillcolor='rgba(139, 92, 246, 0.1)',
+                hovertemplate='Gross: %{y:.2%}'
             ))
             
         # Net Leverage
@@ -363,13 +364,15 @@ class PortfolioVisualizer:
             fig.add_trace(go.Scatter(
                 x=x_data, y=y_net, 
                 name='Net Lev',
-                line=dict(color='#10B981', width=2)
+                line=dict(color='#10B981', width=2),
+                hovertemplate='Net: %{y:.2%}'
             ))
             
         fig.update_layout(
             title='Exposure Analysis (Leverage)',
             xaxis_title='',
             yaxis_title='Leverage Ratio',
+            yaxis_tickformat='.0%',
             template='plotly_white',
             hovermode='x unified',
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -430,7 +433,8 @@ class PortfolioVisualizer:
             fill='tozeroy', 
             name='Drawdown', 
             line=dict(color=self.colors['drawdown'], width=1.5),
-            fillcolor='rgba(239, 68, 68, 0.1)'
+            fillcolor='rgba(239, 68, 68, 0.1)',
+            hovertemplate='%{x|%Y-%m-%d}<br>Drawdown: %{y:.2%}'
         ))
         
         fig.update_layout(
@@ -470,7 +474,11 @@ class PortfolioVisualizer:
             texttemplate="%{z:.1%}",
             textfont={"size": 10},
             ygap=2, # Add gap between cells
-            xgap=2
+            xgap=2,
+            hoverinfo='skip', # Disable hover
+            colorbar=dict(
+                tickformat='.0%'
+            )
         ))
         
         fig.update_layout(
@@ -492,7 +500,8 @@ class PortfolioVisualizer:
             fig.add_trace(go.Scatter(
                 x=x_data, y=y_beta,
                 name='Rolling Beta (60d)',
-                line=dict(color='#F59E0B', width=2)
+                line=dict(color='#F59E0B', width=2),
+                hovertemplate='%{x|%Y-%m-%d}<br>Beta: %{y:.2f}'
             ))
             
             # Add 1.0 reference line
@@ -528,7 +537,8 @@ class PortfolioVisualizer:
             mode='lines',
             line=dict(width=0),
             showlegend=False,
-            name='95th Percentile'
+            name='95th Percentile',
+            hovertemplate='%{x|%Y-%m-%d}<br>Val: %{y:,.0f}'
         ))
         
         # Lower Bound (5th) with fill
@@ -538,7 +548,8 @@ class PortfolioVisualizer:
             line=dict(width=0),
             fill='tonexty', # Fill to previous trace (p95)
             fillcolor='rgba(37, 99, 235, 0.1)', # Light Blue
-            name='90% Confidence Interval'
+            name='90% Confidence Interval',
+            hovertemplate='%{x|%Y-%m-%d}<br>Val: %{y:,.0f}'
         ))
         
         # Median (50th)
@@ -546,7 +557,8 @@ class PortfolioVisualizer:
             x=dates, y=p50,
             mode='lines',
             line=dict(color=self.colors['strategy'], width=2),
-            name='Median Projection'
+            name='Median Projection',
+            hovertemplate='%{x|%Y-%m-%d}<br>Val: %{y:,.0f}'
         ))
         
         # Annotate VaR Floor
@@ -577,7 +589,8 @@ class PortfolioVisualizer:
                 name='Rolling Sharpe (6M)',
                 line=dict(color='#8B5CF6', width=2), # Purple
                 fill='tozeroy',
-                fillcolor='rgba(139, 92, 246, 0.1)'
+                fillcolor='rgba(139, 92, 246, 0.1)',
+                hovertemplate='%{x|%Y-%m-%d}<br>Sharpe: %{y:.2f}'
             ))
             
             # Add 0 line
@@ -602,12 +615,14 @@ class PortfolioVisualizer:
             fig.add_trace(go.Scatter(
                 x=x_data, y=y_data,
                 name='VaR 95% (Rolling 1Y)',
-                line=dict(color='#EF4444', width=2)
+                line=dict(color='#EF4444', width=2),
+                hovertemplate='%{x|%Y-%m-%d}<br>VaR: %{y:.2%}'
             ))
             
         fig.update_layout(
             title='Dynamic Risk: Rolling 1-Year VaR (95%)',
             yaxis_title='VaR (%)',
+            yaxis_tickformat='.0%',
             template='plotly_white',
             height=300,
             margin=dict(l=40, r=40, t=60, b=40)
@@ -638,6 +653,7 @@ class PortfolioVisualizer:
         fig.update_layout(
             title='Volatility Cone (Realized Vol Distribution)',
             yaxis_title='Annualized Volatility',
+            yaxis_tickformat='.0%',
             xaxis_title='Time Horizon',
             template='plotly_white',
             height=400,
@@ -670,14 +686,16 @@ class PortfolioVisualizer:
                 name='Stock Selection (Alpha)',
                 line=dict(color='#10B981', width=2), # Green
                 fill='tozeroy',
-                fillcolor='rgba(16, 185, 129, 0.1)'
+                fillcolor='rgba(16, 185, 129, 0.1)',
+                hovertemplate='%{x|%Y-%m-%d}<br>Alpha: %{y:.2f}%'
             ))
             
             # 3. Market (Beta)
             fig.add_trace(go.Scatter(
                 x=x_data, y=y_systematic,
                 name='Market Timing (Beta)',
-                line=dict(color='#6B7280', width=2, dash='dot') # Gray dashed
+                line=dict(color='#6B7280', width=2, dash='dot'), # Gray dashed
+                hovertemplate='%{x|%Y-%m-%d}<br>Beta: %{y:.2f}%'
             ))
             
         fig.update_layout(

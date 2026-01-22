@@ -11,7 +11,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Portfolio Analytics Engine")
     parser.add_argument('--file', type=str, required=False, help="Path to trade log Excel file")
     parser.add_argument('--capital', type=float, default=1000000.0, help="Initial Capital (NAV), default 1,000,000")
-    parser.add_argument('--slippage', type=float, default=0.0, help="Slippage in basis points (e.g. 5.0)")
+    parser.add_argument('--slippage', type=float, default=5.0, help="Slippage in basis points (e.g. 5.0). Default 5.0")
+    parser.add_argument('--commission', type=float, default=10.0, help="Commission in basis points (e.g. 10.0). Default 10.0")
     parser.add_argument('--benchmark', type=str, default='TWSE Index', help="Benchmark ticker (Bloomberg format, e.g. TWSE Index)")
     parser.add_argument('--output', type=str, default='index.html', help='Output HTML file')
     
@@ -78,7 +79,7 @@ def main():
     analyzer = PortfolioAnalyzer(mdm)
     print("Fetching market data and calculating metrics...")
     try:
-        results = analyzer.process_portfolio(trades_df, args.benchmark, args.slippage, args.capital)
+        results = analyzer.process_portfolio(trades_df, args.benchmark, args.slippage, args.commission, args.capital)
     except ValueError as ve:
         # Check if it was due to empty market data (Stop condition from BloombergManager)
         if "No market data fetched" in str(ve):

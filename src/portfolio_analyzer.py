@@ -11,22 +11,16 @@ class PortfolioAnalyzer:
     def __init__(self, market_data_manager):
         self.mdm = market_data_manager
 
-    def process_portfolio(self, trades_df: pd.DataFrame, benchmark_ticker: str = 'QQQ', slippage_bps: float = 0.0, initial_capital: float = 1_000_000.0):
+    def process_portfolio(self, trades_df: pd.DataFrame, benchmark_ticker: str = 'QQQ', slippage_bps: float = 0.0, commission_bps: float = 10.0, initial_capital: float = 1_000_000.0):
         """
         Main workflow to calculate portfolio history and metrics.
-        
         Args:
-            trades_df: DataFrame with Date, Ticker, Shares, Traded_Total_Value.
-            benchmark_ticker: Ticker for market comparison.
-            slippage_bps: Execution cost in basis points (e.g. 5.0 for 5 bps).
-            initial_capital: Starting Net Asset Value (Cash).
-            
-        Returns:
-            dict: Contains 'daily_metrics' (DataFrame) and 'summary_stats' (dict).
+            commission_bps: Transaction commission in basis points (default 10.0).
         """
         if trades_df.empty:
             return {}
 
+        # ... (Time Scope, Universe, Market Data steps remain unchanged)
         # 1. Time Scope
         start_date = trades_df['Date'].min()
         end_date = datetime.now()
@@ -44,39 +38,44 @@ class PortfolioAnalyzer:
             raise ValueError("No market data fetched. Check internet or tickers.")
             
         # 4. Calculate Daily Positions and Cash Flow
-        # Handle non-trading days (weekends) by calculating on full calendar range first
         full_date_range = pd.date_range(start=start_date, end=end_date, freq='D')
-        
-        # Enforce consistency on Price DataFrame
-        # Reindex to full range and Forward Fill to prevent artificial drops in MV due to missing data
-        # also fillna with 0.0 initially implies if no data at all, price is 0. 
-        # But better to ffill.
         price_df = price_df.reindex(full_date_range).ffill()
         
         trades_df['DateOnly'] = trades_df['Date'].dt.normalize()
         
         # 4a. Positions (Share Count)
         share_changes = trades_df.pivot_table(index='DateOnly', columns='Ticker', values='Shares', aggfunc='sum').fillna(0)
-        
-        # Reindex to full calendar range to capture ALL trades
         share_changes = share_changes.reindex(full_date_range, fill_value=0)
-        
-        # Cumulative sum to get holdings on every calendar day
         holdings_calendar = share_changes.cumsum()
-        
-        # Now sample holdings on Trading Days (align with Price)
-        # using ffill is typically redundant if we computed cumsum on full range, 
-        # but reindexing to a subset (trading days) just picks the values.
         holdings = holdings_calendar.reindex(price_df.index, method='ffill')
 
-        # 4b. Cash Flow
+        # 4b. Cash Flow & Costs
         # Traded_Total_Value is signed cash flow. Negative = Outflow (Buy), Positive = Inflow (Sell)
         trades_df['TradeValue'] = trades_df['Traded_Total_Value'].abs()
+        
+        # A. Slippage (Cost on all trades)
         trades_df['SlippageCost'] = trades_df['TradeValue'] * (slippage_bps / 10000.0)
         
-        # PrincipalCashFlow is directly the signed value provided
+        # B. Commission (Cost on all trades)
+        trades_df['CommissionCost'] = trades_df['TradeValue'] * (commission_bps / 10000.0)
+        
+        # C. Tax (0.3% only on SELLS for Taiwan Stocks)
+        # Heuristic: Ticker ends with '.TW' or is purely numeric with 4 digits (e.g. '2330')
+        def calculate_tax(row):
+            # Only Tax on SELLS (Positive CashInflow, i.e., Traded_Total_Value > 0)
+            if row['Traded_Total_Value'] > 0:
+                ticker = str(row['Ticker'])
+                is_tw = ticker.endswith('.TW') or (ticker.isdigit() and len(ticker) == 4) or 'TWSE' in ticker
+                if is_tw:
+                    return row['TradeValue'] * 0.003
+            return 0.0
+
+        trades_df['TaxCost'] = trades_df.apply(calculate_tax, axis=1)
+        
+        # Net Cash Effect = Principal - Costs
+        # Note: Principal is signed. Costs are always positive outflows (subtracted).
         trades_df['PrincipalCashFlow'] = trades_df['Traded_Total_Value']
-        trades_df['NetCashEffect'] = trades_df['PrincipalCashFlow'] - trades_df['SlippageCost']
+        trades_df['NetCashEffect'] = trades_df['PrincipalCashFlow'] - trades_df['SlippageCost'] - trades_df['CommissionCost'] - trades_df['TaxCost']
         
         cash_changes = trades_df.groupby('DateOnly')['NetCashEffect'].sum()
         
@@ -176,6 +175,9 @@ class PortfolioAnalyzer:
         metrics = self._calculate_metrics(daily_returns, bench_returns, start_nav, end_nav, days_count)
         metrics['Slippage_BPS'] = slippage_bps
         metrics['Total_Slippage_Cost'] = trades_df['SlippageCost'].sum()
+        metrics['Total_Commission'] = trades_df['CommissionCost'].sum()
+        metrics['Total_Tax'] = trades_df['TaxCost'].sum()
+        metrics['Total_Transaction_Costs'] = metrics['Total_Slippage_Cost'] + metrics['Total_Commission'] + metrics['Total_Tax']
         
         # Turnover Calculation (Annualized)
         # Turnover ~ (Total Traded Value / 2) / Average Equity * (252 / Days)
@@ -287,10 +289,10 @@ class PortfolioAnalyzer:
         rolling_std = result_df['Portfolio_Return'].rolling(60).std()
         result_df['Rolling_Sharpe'] = (rolling_mean / rolling_std * np.sqrt(252)).fillna(0)
         
-        # B. Rolling VaR (Expanding Window) for Trend
+        # B. Rolling VaR (Rolling 1-Year Window)
         # 95% Var = 5th percentile
-        # Use expanding window with min_periods=21 (1 month) to show evolution from early days
-        result_df['Rolling_VaR_95'] = result_df['Portfolio_Return'].expanding(min_periods=21).apply(lambda x: np.percentile(x, 5)).abs().fillna(0)
+        # Use rolling window 252 (1 Year), min_periods=60 to show early evolution
+        result_df['Rolling_VaR_95'] = result_df['Portfolio_Return'].rolling(window=252, min_periods=60).apply(lambda x: np.percentile(x, 5)).abs().fillna(0)
         
         # C. Volatility Cone Data
         vol_windows = [21, 63, 126, 252] # 1M, 3M, 6M, 1Y
