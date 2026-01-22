@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 import pandas as pd
 from src.data_loader import DataLoader
 from src.bloomberg_data import BloombergDataManager
@@ -33,7 +34,8 @@ def main():
     # Default file path
     file_path = args.file
     if file_path is None:
-        file_path = r"C:\Users\jonathanku\Documents\Jonathan Ku\Code\data.xlsx"
+        # Default path: Look for data.xlsx in the script directory
+        file_path = os.path.join(os.path.dirname(__file__), 'data.xlsx')
         
     trades_df = pd.DataFrame()
     
@@ -43,18 +45,18 @@ def main():
         from src.data_loader import GoogleSheetLoader
         if not os.path.exists(args.creds):
              print(f"Error: Credential file '{args.creds}' not found. Please provide valid path.")
-             return
+             sys.exit(1)
              
         loader = GoogleSheetLoader(args.creds)
         trades_df = loader.load_trades(args.gsheet_id)
         if trades_df.empty:
              print("No trades loaded from Sheet. Exiting.")
-             return
+             sys.exit(1)
     else:
         if not os.path.exists(file_path):
             print(f"Error: Input file not found at {file_path}")
             print("Please provide a valid file path using --file or ensure the default file exists.")
-            return
+            sys.exit(1)
         
         print(f"Starting analysis on {file_path}")
         loader = DataLoader()
@@ -63,7 +65,7 @@ def main():
             print(f"Loaded {len(trades_df)} trades.")
         except Exception as e:
             print(f"Error loading data: {e}")
-            return
+            sys.exit(1)
 
     print(f"Slippage: {args.slippage} bps")
     print(f"Benchmark: {args.benchmark}")
