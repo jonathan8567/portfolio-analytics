@@ -100,7 +100,7 @@ class PortfolioAnalyzer:
         short_mv = pd.Series(0.0, index=daily_df.index)
         
         # FX Data (ensure no NaNs)
-        usdkrw = price_df[fx_ticker].ffill().fillna(1200.0) if fx_ticker in price_df.columns else pd.Series(1.0, index=daily_df.index)
+        usdkrw = price_df[fx_krw_ticker].ffill().fillna(1200.0) if fx_krw_ticker in price_df.columns else pd.Series(1.0, index=daily_df.index)
         
         for t in tickers:
             if t in price_df.columns:
