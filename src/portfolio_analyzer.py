@@ -255,6 +255,22 @@ class PortfolioAnalyzer:
         if not holdings_df.empty:
              holdings_df = holdings_df.sort_values('Weight %', ascending=False)
         
+        # --- NEW: Aggregate Asset Returns for Correlation Engine ---
+        # We need a DataFrame of historical returns for all current holdings
+        # Use price_df which is already loaded (contains all tickers)
+        asset_returns_data = {}
+        if not holdings_df.empty:
+            for ticker in holdings_df['Ticker'].values:
+                if ticker in price_df.columns:
+                    prices = price_df[ticker]
+                    # Align with portfolio date range
+                    prices = prices[prices.index >= result_df.index[0]]
+                    asset_returns_data[ticker] = prices.pct_change()
+        
+        asset_returns_df = pd.DataFrame(asset_returns_data).dropna(how='all')
+        # Fill missing with 0 for now or forward fill (better) to keep correlation structure
+        asset_returns_df = asset_returns_df.fillna(0.0)
+
         
         # --- 7. Calculate Rolling Beta (60 days) ---
         rolling_cov = result_df['Portfolio_Return'].rolling(window=60).cov(result_df['Benchmark_Return'])
@@ -282,6 +298,39 @@ class PortfolioAnalyzer:
         
         # Run Monte Carlo (Future VaR)
         mc_results = risk_engine.run_monte_carlo_simulation(end_nav, n_sims=10000, days=20)
+        
+        # --- NEW: Correlation-based Multivariate Stress Test ---
+        multivar_stress_results = {}
+        if not asset_returns_df.empty and asset_returns_df.shape[1] >= 2:
+            # Get current weights aligned with asset_returns_df columns
+            weights_dict = {}
+            for _, row in holdings_df.iterrows():
+                weights_dict[row['Ticker']] = row['Weight %'] / 100.0
+            
+            # Align weights array to asset_returns_df columns
+            weights_arr = np.array([weights_dict.get(t, 0.0) for t in asset_returns_df.columns])
+            # Renormalize if sum != 1
+            if weights_arr.sum() > 0:
+                weights_arr = weights_arr / weights_arr.sum()
+            
+            # Compute Correlation Matrix for visualization
+            _, corr_matrix = RiskEngine.compute_covariance_matrix(asset_returns_df)
+            
+            # Run Normal Regime
+            normal_stress = RiskEngine.run_multivariate_stress_test(
+                asset_returns_df, weights_arr, end_nav, n_sims=5000, days=20, correlation_shock=0.0
+            )
+            
+            # Run Panic Regime (High Correlation)
+            panic_stress = RiskEngine.run_multivariate_stress_test(
+                asset_returns_df, weights_arr, end_nav, n_sims=5000, days=20, correlation_shock=0.9
+            )
+            
+            multivar_stress_results = {
+                'normal': normal_stress,
+                'panic': panic_stress,
+                'corr_matrix': corr_matrix
+            }
         
         # A. Rolling Sharpe (3-Month ~ 60 days) - Adjusted for short history
         # Sharpe = Mean / Std * sqrt(252)
@@ -324,7 +373,8 @@ class PortfolioAnalyzer:
             'holdings_df': holdings_df,
             'stress_test_df': stress_df,
             'monte_carlo_results': mc_results,
-            'vol_cone_data': vol_cone_data
+            'vol_cone_data': vol_cone_data,
+            'multivar_stress': multivar_stress_results
         }
 
     def _calculate_metrics(self, returns: pd.Series, benchmark_returns: pd.Series, start_nav: float = None, end_nav: float = None, days: int = 0) -> dict:

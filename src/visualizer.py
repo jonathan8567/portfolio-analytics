@@ -22,7 +22,7 @@ class PortfolioVisualizer:
             'grid': '#F3F4F6'
         }
 
-    def create_dashboard_html(self, df: pd.DataFrame, stats: dict, holdings_df: pd.DataFrame = None, trades_df: pd.DataFrame = None, stress_df: pd.DataFrame = None, mc_results: dict = None, vol_cone_data: dict = None) -> str:
+    def create_dashboard_html(self, df: pd.DataFrame, stats: dict, holdings_df: pd.DataFrame = None, trades_df: pd.DataFrame = None, stress_df: pd.DataFrame = None, mc_results: dict = None, vol_cone_data: dict = None, multivar_stress: dict = None) -> str:
         """Generates the full HTML dashboard."""
         
         # Create Charts
@@ -124,6 +124,47 @@ class PortfolioVisualizer:
                     </thead>
                     <tbody>
                         {"".join(s_rows)}
+                    </tbody>
+                </table>
+            </div>
+            """
+
+        # Generate Multivariate Stress Test Table (Correlation-based)
+        multivar_html = ""
+        if multivar_stress and 'normal' in multivar_stress and multivar_stress['normal']:
+            normal = multivar_stress.get('normal', {})
+            panic = multivar_stress.get('panic', {})
+            
+            normal_var = normal.get('var_95', 0)
+            normal_cvar = normal.get('cvar_95', 0)
+            panic_var = panic.get('var_95', 0)
+            panic_cvar = panic.get('cvar_95', 0)
+            
+            multivar_html = f"""
+            <div class="full-width table-container" style="margin-bottom: 24px;">
+                <h3 style="margin-top:0; color:#374151">Correlation-Based Stress Testing (Monte Carlo)</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="text-align: left;">Regime</th>
+                            <th>20-Day VaR (95%)</th>
+                            <th>20-Day CVaR (95%)</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><b>Normal Regime</b></td>
+                            <td class="pos-val" style="color:#F59E0B; font-weight:bold;">${normal_var:,.0f}</td>
+                            <td class="pos-val" style="color:#EF4444; font-weight:bold;">${normal_cvar:,.0f}</td>
+                            <td>Historical correlations preserved</td>
+                        </tr>
+                        <tr>
+                            <td><b>Panic Regime</b></td>
+                            <td class="pos-val" style="color:#F59E0B; font-weight:bold;">${panic_var:,.0f}</td>
+                            <td class="pos-val" style="color:#EF4444; font-weight:bold;">${panic_cvar:,.0f}</td>
+                            <td>Correlations spike to 0.9 (Risk-Off)</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -326,6 +367,8 @@ class PortfolioVisualizer:
                     {holdings_html}
                     
                     {stress_html}
+                    
+                    {multivar_html}
                     
                     {trades_html}
                 </div>
@@ -620,9 +663,9 @@ class PortfolioVisualizer:
             ))
             
         fig.update_layout(
-            title='Dynamic Risk: Rolling 1-Year VaR (95%)',
+            title='Dynamic Risk: Daily 95% VaR (1-Year Lookback)',
             yaxis_title='VaR (%)',
-            yaxis_tickformat='.0%',
+            yaxis_tickformat='.2%',
             template='plotly_white',
             height=300,
             margin=dict(l=40, r=40, t=60, b=40)

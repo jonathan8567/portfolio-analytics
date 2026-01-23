@@ -195,3 +195,119 @@ class RiskEngine:
             })
             
         return pd.DataFrame(results)
+
+    # ==================== PHASE 7: CORRELATION-BASED STRESS TESTING ====================
+    
+    @staticmethod
+    def compute_covariance_matrix(asset_returns_df: pd.DataFrame) -> tuple:
+        """
+        Computes the Covariance and Correlation Matrix from asset returns.
+        
+        Args:
+            asset_returns_df: DataFrame with columns = Tickers, index = Dates.
+            
+        Returns:
+            tuple: (cov_matrix: pd.DataFrame, corr_matrix: pd.DataFrame)
+        """
+        if asset_returns_df.empty or asset_returns_df.shape[1] < 2:
+            return pd.DataFrame(), pd.DataFrame()
+            
+        cov_matrix = asset_returns_df.cov()
+        corr_matrix = asset_returns_df.corr()
+        
+        return cov_matrix, corr_matrix
+
+    @staticmethod
+    def run_multivariate_stress_test(
+        asset_returns_df: pd.DataFrame,
+        weights: np.ndarray,
+        current_nav: float,
+        n_sims: int = 5000,
+        days: int = 20,
+        correlation_shock: float = 0.0
+    ) -> dict:
+        """
+        Runs Monte Carlo Simulation using Multivariate Normal Distribution.
+        Accounts for asset correlations from historical data.
+        
+        Args:
+            asset_returns_df: DataFrame of daily returns (cols=tickers).
+            weights: np.array of current portfolio weights (same order as columns).
+            current_nav: Current Portfolio Value.
+            n_sims: Number of simulations.
+            days: Forecast horizon.
+            correlation_shock: If > 0, increase all off-diagonal correlations 
+                               towards this value (e.g. 0.9 for "Panic" regime).
+        
+        Returns:
+            dict: Contains 'var_95', 'cvar_95', 'expected_nav', 'paths' for visualization.
+        """
+        if asset_returns_df.empty or asset_returns_df.shape[1] < 2:
+            return {}
+            
+        n_assets = asset_returns_df.shape[1]
+        
+        # 1. Estimate Parameters
+        mu = asset_returns_df.mean().values  # (n_assets,)
+        cov_matrix = asset_returns_df.cov().values  # (n_assets, n_assets)
+        
+        # 2. Apply Correlation Shock (Regime Switching)
+        if correlation_shock > 0:
+            # Extract volatilities (diagonal sqrt)
+            vols = np.sqrt(np.diag(cov_matrix))
+            # Compute correlation matrix
+            corr_matrix = cov_matrix / np.outer(vols, vols)
+            # Shock: move off-diagonal towards correlation_shock
+            shocked_corr = np.where(
+                np.eye(n_assets) == 1, 
+                1.0, # Diagonal stays 1
+                corr_matrix * (1 - correlation_shock) + correlation_shock
+            )
+            # Rebuild covariance matrix
+            cov_matrix = shocked_corr * np.outer(vols, vols)
+        
+        # 3. Cholesky Decomposition
+        try:
+            L = np.linalg.cholesky(cov_matrix)
+        except np.linalg.LinAlgError:
+            # Fallback: Add small diagonal to ensure positive definiteness
+            cov_matrix += np.eye(n_assets) * 1e-8
+            L = np.linalg.cholesky(cov_matrix)
+        
+        # 4. Simulate Correlated Returns
+        np.random.seed(42)  # Reproducibility
+        
+        # Generate uncorrelated standard normal shocks: (n_sims, days, n_assets)
+        z = np.random.normal(size=(n_sims, days, n_assets))
+        
+        # Correlate shocks: z_corr = z @ L.T
+        z_corr = np.einsum('ijk,lk->ijl', z, L)  # each (days, n_assets) gets correlated
+        
+        # Add drift to get daily returns
+        daily_returns = mu + z_corr  # Broadcasting (n_sims, days, n_assets)
+        
+        # 5. Aggregate to Portfolio Level
+        # Portfolio return per day = sum(asset_return * weight)
+        portfolio_daily_returns = np.einsum('ijk,k->ij', daily_returns, weights)  # (n_sims, days)
+        
+        # Compound to get NAV paths
+        cumulative_returns = np.cumprod(1 + portfolio_daily_returns, axis=1)
+        nav_paths = current_nav * cumulative_returns  # (n_sims, days)
+        
+        # 6. Compute Risk Metrics
+        final_navs = nav_paths[:, -1]
+        pnl = final_navs - current_nav
+        
+        var_95 = np.percentile(pnl, 5)  # 5th percentile of P&L
+        cvar_95 = pnl[pnl <= var_95].mean() if np.any(pnl <= var_95) else var_95
+        expected_nav = np.mean(final_navs)
+        
+        return {
+            'var_95': abs(var_95) if var_95 < 0 else 0.0,
+            'cvar_95': abs(cvar_95) if cvar_95 < 0 else 0.0,
+            'expected_nav': expected_nav,
+            'paths': nav_paths,
+            'days': days,
+            'correlation_shock': correlation_shock
+        }
+

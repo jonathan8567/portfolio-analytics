@@ -105,6 +105,7 @@ def main():
     stress_df = results.get('stress_test_df')
     mc_results = results.get('monte_carlo_results')
     vol_cone_data = results.get('vol_cone_data')
+    multivar_stress = results.get('multivar_stress')
     
     # Explicitly set Benchmark in stats for display
     stats['Benchmark'] = args.benchmark
@@ -122,7 +123,7 @@ def main():
     print("\nGenerating professional dashboard...")
     
     # Generate full HTML string
-    html_report = viz.create_dashboard_html(daily_df, stats, holdings_df, trades_df, stress_df, mc_results, vol_cone_data)
+    html_report = viz.create_dashboard_html(daily_df, stats, holdings_df, trades_df, stress_df, mc_results, vol_cone_data, multivar_stress)
     
     # Save to HTML
     # Ensure it saves in the script directory if no path provided
