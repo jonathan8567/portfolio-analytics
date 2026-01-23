@@ -65,11 +65,14 @@ class PortfolioVisualizer:
         if holdings_df is not None and not holdings_df.empty:
             rows = []
             for _, row in holdings_df.iterrows():
+                local_price = row.get('Local_Price', row['Price'])
+                currency = row.get('Currency', 'USD')
                 rows.append(f"""
                 <tr>
                     <td><b>{row['Ticker']}</b></td>
                     <td class="pos-val">{row['Shares']:,.0f}</td>
                     <td class="pos-val">{row['Price']:,.2f}</td>
+                    <td class="pos-val">{currency} {local_price:,.2f}</td>
                     <td class="pos-val">{row['Market Value']:,.0f}</td>
                     <td class="pos-val" style="font-weight:bold; color:#2563EB">{row['Weight %']:.2f}%</td>
                 </tr>
@@ -84,6 +87,7 @@ class PortfolioVisualizer:
                             <th style="text-align: left;">Ticker</th>
                             <th>Shares</th>
                             <th>Price(USD)</th>
+                            <th>Local Price</th>
                             <th>Market Value(USD)</th>
                             <th>Weight %</th>
                         </tr>
@@ -177,17 +181,30 @@ class PortfolioVisualizer:
             # Sort by Date desc
             trades_sorted = trades_df.sort_values('Date', ascending=False)
             for _, row in trades_sorted.iterrows():
+                ticker = row['Ticker']
                 direction = "BUY" if row['Shares'] > 0 else "SELL"
                 color = "#10B981" if direction == "BUY" else "#EF4444"
                 date_str = pd.to_datetime(row['Date']).strftime('%Y-%m-%d')
+                price_usd = row.get('Price', 0.0)
+                
+                # Determine currency and show local price indicator
+                # Note: For accurate local price, we'd need historical FX rates
+                # For now, just show the currency label
+                if ' TT ' in ticker or ticker.endswith(' TT Equity'):
+                    currency = 'TWD'
+                elif ' KS ' in ticker or ticker.endswith(' KS Equity') or ticker.startswith('KM'):
+                    currency = 'KRW'
+                else:
+                    currency = 'USD'
                 
                 t_rows.append(f"""
                 <tr>
                     <td>{date_str}</td>
-                    <td><b>{row['Ticker']}</b></td>
+                    <td><b>{ticker}</b></td>
                     <td style="color:{color}; font-weight:bold;">{direction}</td>
                     <td class="pos-val">{abs(row['Shares']):,.0f}</td>
-                    <td class="pos-val">{row.get('Price', 0.0):,.2f}</td>
+                    <td class="pos-val">{price_usd:,.2f}</td>
+                    <td class="pos-val">{currency}</td>
                 </tr>
                 """)
                 
@@ -202,6 +219,7 @@ class PortfolioVisualizer:
                             <th style="text-align: left;">Action</th>
                             <th>Shares</th>
                             <th>Price(USD)</th>
+                            <th>Currency</th>
                         </tr>
                     </thead>
                     <tbody>

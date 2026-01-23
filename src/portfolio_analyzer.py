@@ -29,9 +29,10 @@ class PortfolioAnalyzer:
         tickers = trades_df['Ticker'].unique().tolist()
         
         # 3. Fetch Market Data
-        # Include benchmark and FX
-        fx_ticker = 'USDKRW Curncy'
-        all_tickers = list(set(tickers + [benchmark_ticker, fx_ticker]))
+        # Include benchmark and FX (KRW and TWD for local price display)
+        fx_krw_ticker = 'USDKRW Curncy'
+        fx_twd_ticker = 'USDTWD Curncy'
+        all_tickers = list(set(tickers + [benchmark_ticker, fx_krw_ticker, fx_twd_ticker]))
         price_df = self.mdm.fetch_history(all_tickers, start_date, end_date)
         
         if price_df.empty:
@@ -219,34 +220,54 @@ class PortfolioAnalyzer:
         end_nav_for_holdings = last_row_daily_metrics['Total_Equity']
         
         holdings_list = []
+        # Get FX rates for local price calculation
+        last_date = result_df.index[-1]
+        fx_krw = price_df.loc[last_date, 'USDKRW Curncy'] if 'USDKRW Curncy' in price_df.columns else 1.0
+        fx_twd = price_df.loc[last_date, 'USDTWD Curncy'] if 'USDTWD Curncy' in price_df.columns else 1.0
+        
         for col in result_df.columns: # Iterate through result_df for position columns
             if col.startswith('Pos_'):
                 ticker = col.replace('Pos_', '')
                 shares = last_row_daily_metrics[col]
                 if abs(shares) > 0.0001:
-                    # Get Price and FX
-                    price = price_df.loc[result_df.index[-1], ticker] if ticker in price_df.columns else 0.0
+                    # Get Price (USD) and FX
+                    price_usd = price_df.loc[last_date, ticker] if ticker in price_df.columns else 0.0
                     
-                    # Determine instrument properties for accurate MV calculation
+                    # Determine instrument properties and local currency
                     mult = 1.0
                     div_fx_val = 1.0
+                    local_price = price_usd  # Default: USD
+                    currency = 'USD'
                     
                     if ticker.startswith('KM'):
                         mult = 250000.0
-                        div_fx_val = 1.0 # No FX conversion for KM
+                        div_fx_val = 1.0
+                        local_price = price_usd * fx_krw  # KRW
+                        currency = 'KRW'
                     elif ticker.startswith('TWT') or ticker.startswith('TW'):
                         mult = 40.0
-                        div_fx_val = 1.0 # USD based, no conversion needed
+                        div_fx_val = 1.0
+                        # TW futures are USD-based, no conversion
+                    elif ' TT ' in ticker or ticker.endswith(' TT Equity'):
+                        # Taiwan stocks
+                        local_price = price_usd * fx_twd
+                        currency = 'TWD'
+                    elif ' KS ' in ticker or ticker.endswith(' KS Equity'):
+                        # Korea stocks
+                        local_price = price_usd * fx_krw
+                        currency = 'KRW'
                     
                     # Calculate Market Value for the position
-                    pos_mv = (shares * price * mult) / div_fx_val
+                    pos_mv = (shares * price_usd * mult) / div_fx_val
                     
                     weight = (pos_mv / end_nav_for_holdings) * 100 if end_nav_for_holdings != 0 else 0.0
                     
                     holdings_list.append({
                         'Ticker': ticker,
                         'Shares': shares,
-                        'Price': price,
+                        'Price': price_usd,
+                        'Local_Price': local_price,
+                        'Currency': currency,
                         'Market Value': pos_mv,
                         'Weight %': weight
                     })
