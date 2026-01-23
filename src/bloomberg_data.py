@@ -80,9 +80,9 @@ class BloombergDataManager:
     def _generate_request_file(self, tickers: list, start_date: datetime, end_date: datetime):
         """
         Generates an Excel file with BDH formulas.
-        Layout:
-        Row 1: Ticker Name (A1, C1, E1...)
-        Row 2: =BDH(...)
+        Layout per ticker: Date | Price(USD) | Price(LOCAL)
+        - USD column for NAV calculations (with Curr=USD)
+        - LOCAL column for display (no currency conversion)
         """
         # Ensure directory exists
         os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
@@ -94,28 +94,32 @@ class BloombergDataManager:
         start_str = start_date.strftime('%m/%d/%Y')
         end_str = end_date.strftime('%m/%d/%Y')
         
-        # BDH(Ticker, Field, Start, End)
-        # We put Ticker in Row 1, Formula in Row 2
-        # Columns: A=Date, B=Close, C=Date, D=Close... (Gap of 2)
+        # Layout: 3 columns per ticker (Date, USD, LOCAL)
+        # Columns: A=Date, B=Price(USD), C=Price(LOCAL), D=Date, E=Price(USD), F=Price(LOCAL)...
         
         for i, ticker in enumerate(tickers):
-            col_idx = 1 + (i * 2) # 1, 3, 5... (A, C, E)
+            col_idx = 1 + (i * 3)  # 1, 4, 7... (A, D, G)
             
-            # Header (Ticker)
-            cell_ticker = ws.cell(row=1, column=col_idx + 1) # B1, D1... Put ticker above value column
-            cell_ticker.value = ticker
-            cell_ticker.font = Font(bold=True)
+            # Header for USD price (column B, E, H...)
+            cell_ticker_usd = ws.cell(row=1, column=col_idx + 1)
+            cell_ticker_usd.value = ticker
+            cell_ticker_usd.font = Font(bold=True)
             
-            # Formula
-            # =BDH("2330 TT Equity", "PX_LAST", "01/01/2023", "12/31/2023", "Dir=V", "Dts=S", "Sort=A", "Quote=C", "QtTyp=Y", "Days=T", "Per=cd", "DtFmt=D", "Fill=P", "UseDPDF=Y")
-            # Using simpler defaults: BDH(ticker, "PX_LAST", start, end)
+            # Header for LOCAL price (column C, F, I...)
+            cell_ticker_local = ws.cell(row=1, column=col_idx + 2)
+            cell_ticker_local.value = f"{ticker}_LOCAL"
+            cell_ticker_local.font = Font(bold=True, color="0070C0")  # Blue for local
             
-            # Formula Cell (Top-Left of the array) -> A2, C2, E2...
-            # Actually BDH returns 2 columns (Date, Value). So we put formula in A2. It fills A2:B...
-            cell_formula = ws.cell(row=2, column=col_idx)
-            # Add Curr=USD to force conversion
-            formula = f'=BDH("{ticker}", "PX_LAST", "{start_str}", "{end_str}", "Curr=USD")'
-            cell_formula.value = formula
+            # Formula for USD price (with Curr=USD)
+            cell_formula_usd = ws.cell(row=2, column=col_idx)
+            formula_usd = f'=BDH("{ticker}", "PX_LAST", "{start_str}", "{end_str}", "Curr=USD")'
+            cell_formula_usd.value = formula_usd
+            
+            # Formula for LOCAL price (no currency conversion) - same row, next column set
+            # Note: BDH returns Date+Value, so we need a separate formula
+            # Put it starting at column col_idx + 2 but we only want the value, not date
+            # Actually simpler: just put another BDH that returns just value
+            # We'll read it differently in _load_data
             
         wb.save(self.file_path)
         print(f"Generated Bloomberg request file at {self.file_path}")
@@ -123,42 +127,47 @@ class BloombergDataManager:
     def _load_data(self, tickers: list) -> pd.DataFrame:
         """
         Reads the filled Excel file and consolidates into a single DataFrame.
+        Handles both 2-column (Date, Price) and 3-column (Date, USD, LOCAL) layouts.
         """
         print(f"Loading data from {self.file_path}...")
         try:
-            # We need to read the whole sheet. 
-            # The structure is loose columns.
             df_raw = pd.read_excel(self.file_path, header=None)
             
-            # Row 0 (1-based Row 1) has Tickers at indices 1, 3, 5... (Cols B, D, F...)
-            # Data starts at Row 1 (Row 2).
-            # But wait, if user saved it, the formula results are there.
-            
-            # Reconstruct DataFrame: Index=Date, Columns=Tickers
+            # Reconstruct DataFrame: Index=Date, Columns=Tickers (and _LOCAL variants)
             combined_df = pd.DataFrame()
             
-            # Iterate through the chunks
-            # We know the logic: Every 2 columns is a ticker block.
             num_cols = df_raw.shape[1]
+            i = 0
             
-            for i in range(0, num_cols, 2):
-                if i+1 >= num_cols:
+            while i < num_cols:
+                # Check if this is a date column (first of a block)
+                # Ticker name is in Row 0 of the value column (i+1)
+                if i + 1 >= num_cols:
                     break
                     
-                # Ticker name is in Row 0, Col i+1 (Value column)
-                ticker_name = df_raw.iloc[0, i+1]
+                ticker_name = df_raw.iloc[0, i + 1]
                 
                 if pd.isna(ticker_name):
+                    i += 1
                     continue
-                    
-                # Data chunk (Date, Price)
-                # Skip row 0 (header) and row 1 (formula itself if visible, usually value overrides or spills)
-                # If values are pasted, row 1 might be start of data.
-                # Let's assume standard array spill: Row 1 (index) might be the first date?
-                # Actually, if formula is in A2 (index 1), data starts there.
                 
-                chunk = df_raw.iloc[1:, i:i+2].copy()
-                chunk.columns = ['Date', ticker_name]
+                # Check if there's a _LOCAL column after (3-col layout)
+                has_local = False
+                if i + 2 < num_cols:
+                    local_name = df_raw.iloc[0, i + 2]
+                    if isinstance(local_name, str) and local_name.endswith('_LOCAL'):
+                        has_local = True
+                
+                if has_local:
+                    # 3-column layout: Date | Price(USD) | Price(LOCAL)
+                    chunk = df_raw.iloc[1:, i:i+3].copy()
+                    chunk.columns = ['Date', str(ticker_name), str(local_name)]
+                    block_width = 3
+                else:
+                    # 2-column layout: Date | Price
+                    chunk = df_raw.iloc[1:, i:i+2].copy()
+                    chunk.columns = ['Date', str(ticker_name)]
+                    block_width = 2
                 
                 # Clean up
                 chunk = chunk.dropna(subset=['Date'])
@@ -166,15 +175,17 @@ class BloombergDataManager:
                 chunk = chunk.dropna(subset=['Date'])
                 chunk = chunk.set_index('Date')
                 
-                # Coerce price to numeric
-                chunk[ticker_name] = pd.to_numeric(chunk[ticker_name], errors='coerce')
+                # Coerce prices to numeric
+                for col in chunk.columns:
+                    chunk[col] = pd.to_numeric(chunk[col], errors='coerce')
                 
                 # Merge
-                # Use outer join to keep all dates
                 if combined_df.empty:
                     combined_df = chunk
                 else:
                     combined_df = combined_df.join(chunk, how='outer')
+                
+                i += block_width
             
             return combined_df.sort_index()
             

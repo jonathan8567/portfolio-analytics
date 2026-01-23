@@ -185,11 +185,13 @@ class PortfolioVisualizer:
                 direction = "BUY" if row['Shares'] > 0 else "SELL"
                 color = "#10B981" if direction == "BUY" else "#EF4444"
                 date_str = pd.to_datetime(row['Date']).strftime('%Y-%m-%d')
-                price_usd = row.get('Price', 0.0)
                 
-                # Determine currency and show local price indicator
-                # Note: For accurate local price, we'd need historical FX rates
-                # For now, just show the currency label
+                # Trade execution price from data.xlsx (in local currency)
+                trade_price = row.get('Price', 0.0)
+                if pd.isna(trade_price):
+                    trade_price = 0.0
+                
+                # Determine currency
                 if ' TT ' in ticker or ticker.endswith(' TT Equity'):
                     currency = 'TWD'
                 elif ' KS ' in ticker or ticker.endswith(' KS Equity') or ticker.startswith('KM'):
@@ -203,8 +205,7 @@ class PortfolioVisualizer:
                     <td><b>{ticker}</b></td>
                     <td style="color:{color}; font-weight:bold;">{direction}</td>
                     <td class="pos-val">{abs(row['Shares']):,.0f}</td>
-                    <td class="pos-val">{price_usd:,.2f}</td>
-                    <td class="pos-val">{currency}</td>
+                    <td class="pos-val">{currency} {trade_price:,.2f}</td>
                 </tr>
                 """)
                 
@@ -218,8 +219,7 @@ class PortfolioVisualizer:
                             <th style="text-align: left;">Ticker</th>
                             <th style="text-align: left;">Action</th>
                             <th>Shares</th>
-                            <th>Price(USD)</th>
-                            <th>Currency</th>
+                            <th>Trade Price</th>
                         </tr>
                     </thead>
                     <tbody>

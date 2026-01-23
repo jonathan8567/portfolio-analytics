@@ -230,32 +230,42 @@ class PortfolioAnalyzer:
                 ticker = col.replace('Pos_', '')
                 shares = last_row_daily_metrics[col]
                 if abs(shares) > 0.0001:
-                    # Get Price (USD) and FX
+                    # Get Price (USD)
                     price_usd = price_df.loc[last_date, ticker] if ticker in price_df.columns else 0.0
                     
-                    # Determine instrument properties and local currency
+                    # Try to get real local price from _LOCAL column
+                    local_col = f"{ticker}_LOCAL"
+                    if local_col in price_df.columns:
+                        local_price = price_df.loc[last_date, local_col]
+                        if pd.isna(local_price):
+                            local_price = price_usd  # Fallback
+                    else:
+                        # Fallback: use USD * FX conversion
+                        local_price = price_usd
+                    
+                    # Determine instrument properties and currency
                     mult = 1.0
                     div_fx_val = 1.0
-                    local_price = price_usd  # Default: USD
                     currency = 'USD'
                     
                     if ticker.startswith('KM'):
                         mult = 250000.0
                         div_fx_val = 1.0
-                        local_price = price_usd * fx_krw  # KRW
                         currency = 'KRW'
+                        if local_col not in price_df.columns:
+                            local_price = price_usd * fx_krw
                     elif ticker.startswith('TWT') or ticker.startswith('TW'):
                         mult = 40.0
                         div_fx_val = 1.0
-                        # TW futures are USD-based, no conversion
+                        # TW futures are USD-based
                     elif ' TT ' in ticker or ticker.endswith(' TT Equity'):
-                        # Taiwan stocks
-                        local_price = price_usd * fx_twd
                         currency = 'TWD'
+                        if local_col not in price_df.columns:
+                            local_price = price_usd * fx_twd
                     elif ' KS ' in ticker or ticker.endswith(' KS Equity'):
-                        # Korea stocks
-                        local_price = price_usd * fx_krw
                         currency = 'KRW'
+                        if local_col not in price_df.columns:
+                            local_price = price_usd * fx_krw
                     
                     # Calculate Market Value for the position
                     pos_mv = (shares * price_usd * mult) / div_fx_val
